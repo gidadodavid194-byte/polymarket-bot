@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Polymarket Antigravity Bot</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500;600&display=swap');
+
+*{margin:0;padding:0;box-sizing:border-box;}
+:root{
+  --bg:#070b0f;
+  --bg2:#0d1318;
+  --bg3:#111920;
+  --border:#1a2a35;
+  --green:#00e87a;
+  --green2:#00b85f;
+  --red:#ff4444;
+  --amber:#f5a623;
+  --blue:#2196f3;
+  --text:#e8f4f0;
+  --muted:#4a7a6a;
+  --dim:#2a4a3a;
+}
+body{background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;min-height:100vh;overflow-x:hidden;}
+
+/* Grid background */
+body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(var(--border) 1px,transparent 1px),linear-gradient(90deg,var(--border) 1px,transparent 1px);background-size:40px 40px;opacity:0.3;pointer-events:none;}
+
+.topbar{display:flex;align-items:center;justify-content:space-between;padding:16px 28px;border-bottom:1px solid var(--border);background:rgba(7,11,15,0.95);position:sticky;top:0;z-index:100;backdrop-filter:blur(10px);}
+.logo{font-family:'Space Mono',monospace;font-size:14px;font-weight:700;color:var(--green);letter-spacing:0.1em;}
+.logo span{color:var(--muted);}
+.live-badge{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--green);font-family:'Space Mono',monospace;}
+.pulse{width:8px;height:8px;border-radius:50%;background:var(--green);animation:pulse 1.5s infinite;}
+@keyframes pulse{0%,100%{opacity:1;box-shadow:0 0 0 0 rgba(0,232,122,0.4)}50%{opacity:0.7;box-shadow:0 0 0 6px rgba(0,232,122,0)}}
+
+.main{padding:24px 28px;max-width:1400px;margin:0 auto;}
+
+/* Metric cards */
+.metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:24px;}
+.card{background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:20px;position:relative;overflow:hidden;}
+.card::after{content:'';position:absolute;top:0;left:0;right:0;height:2px;}
+.card.green::after{background:var(--green);}
+.card.red::after{background:var(--red);}
+.card.amber::after{background:var(--amber);}
+.card.blue::after{background:var(--blue);}
+.card-label{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:0.12em;margin-bottom:10px;font-family:'Space Mono',monospace;}
+.card-value{font-size:28px;font-weight:600;line-height:1;}
+.card-value.green{color:var(--green);}
+.card-value.red{color:var(--red);}
+.card-value.amber{color:var(--amber);}
+.card-sub{font-size:12px;color:var(--muted);margin-top:6px;}
+
+/* Main grid */
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:24px;}
+.grid3{display:grid;grid-template-columns:2fr 1fr;gap:16px;margin-bottom:24px;}
+
+.panel{background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:20px;}
+.panel-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;}
+.panel-title{font-family:'Space Mono',monospace;font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:0.1em;}
+.badge{font-size:10px;padding:3px 8px;border-radius:20px;font-family:'Space Mono',monospace;}
+.badge.green{background:rgba(0,232,122,0.1);color:var(--green);border:1px solid rgba(0,232,122,0.2);}
+.badge.amber{background:rgba(245,166,35,0.1);color:var(--amber);border:1px solid rgba(245,166,35,0.2);}
+
+/* Signal table */
+.signal-row{display:grid;grid-template-columns:1fr 60px 70px 70px 60px;gap:8px;align-items:center;padding:10px 12px;border-radius:8px;margin-bottom:6px;font-size:13px;transition:background 0.2s;}
+.signal-row:hover{background:var(--bg3);}
+.signal-row.header{color:var(--muted);font-size:11px;font-family:'Space Mono',monospace;text-transform:uppercase;letter-spacing:0.08em;padding-bottom:8px;border-bottom:1px solid var(--border);margin-bottom:8px;}
+.signal-row.header:hover{background:none;}
+.market-name{font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.dir-buy{color:var(--green);font-family:'Space Mono',monospace;font-size:11px;font-weight:700;}
+.dir-sell{color:var(--red);font-family:'Space Mono',monospace;font-size:11px;font-weight:700;}
+.edge-bar{position:relative;height:4px;background:var(--dim);border-radius:2px;width:100%;}
+.edge-fill{height:100%;border-radius:2px;background:var(--green);}
+
+/* Mini chart */
+.chart-area{height:120px;position:relative;display:flex;align-items:flex-end;gap:3px;padding-top:10px;}
+.bar{flex:1;border-radius:3px 3px 0 0;transition:height 0.5s;min-height:4px;}
+.bar.pos{background:var(--green);opacity:0.8;}
+.bar.neg{background:var(--red);opacity:0.8;}
+
+/* Activity feed */
+.activity-item{display:flex;gap:12px;align-items:flex-start;padding:10px 0;border-bottom:1px solid var(--border);font-size:12px;}
+.activity-item:last-child{border-bottom:none;}
+.activity-dot{width:8px;height:8px;border-radius:50%;margin-top:3px;flex-shrink:0;}
+.activity-dot.green{background:var(--green);}
+.activity-dot.amber{background:var(--amber);}
+.activity-dot.red{background:var(--red);}
+.activity-dot.blue{background:var(--blue);}
+.activity-time{color:var(--muted);font-family:'Space Mono',monospace;font-size:10px;white-space:nowrap;}
+.activity-text{color:var(--text);line-height:1.4;}
+
+/* Mode toggle */
+.mode-row{display:flex;align-items:center;gap:12px;padding:12px 16px;background:rgba(245,166,35,0.05);border:1px solid rgba(245,166,35,0.2);border-radius:8px;margin-bottom:16px;}
+.mode-dot{width:10px;height:10px;border-radius:50%;background:var(--amber);}
+.mode-text{font-size:13px;color:var(--amber);}
+.mode-text span{color:var(--muted);font-size:12px;margin-left:8px;}
+
+/* Scan counter */
+.scan-ticker{font-family:'Space Mono',monospace;font-size:11px;color:var(--muted);}
+.scan-ticker b{color:var(--green);}
+
+/* Risk bars */
+.risk-row{margin-bottom:12px;}
+.risk-label{display:flex;justify-content:space-between;font-size:12px;margin-bottom:5px;}
+.risk-label span:last-child{color:var(--muted);font-family:'Space Mono',monospace;}
+.risk-bar{height:6px;background:var(--dim);border-radius:3px;}
+.risk-fill{height:100%;border-radius:3px;transition:width 1s;}
+.risk-fill.green{background:var(--green);}
+.risk-fill.amber{background:var(--amber);}
+.risk-fill.red{background:var(--red);}
+
+.separator{height:1px;background:var(--border);margin:16px 0;}
+
+/* Scrollable signals */
+.signals-scroll{max-height:280px;overflow-y:auto;}
+.signals-scroll::-webkit-scrollbar{width:4px;}
+.signals-scroll::-webkit-scrollbar-track{background:transparent;}
+.signals-scroll::-webkit-scrollbar-thumb{background:var(--dim);border-radius:2px;}
+
+.footer{text-align:center;padding:20px;font-family:'Space Mono',monospace;font-size:10px;color:var(--muted);}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="logo">POLY<span>/</span>ANTIGRAVITY</div>
+  <div style="display:flex;gap:20px;align-items:center;">
+    <div class="scan-ticker">Scan <b id="scanCount">0</b> &nbsp;|&nbsp; Next in <b id="countdown">30</b>s</div>
+    <div class="live-badge"><div class="pulse"></div>LIVE</div>
+  </div>
+</div>
+
+<div class="main">
+
+  <!-- Mode warning -->
+  <div class="mode-row">
+    <div class="mode-dot"></div>
+    <div class="mode-text">PAPER TRADING MODE <span>— No real money at risk. Monitoring signals only.</span></div>
+  </div>
+
+  <!-- Metric cards -->
+  <div class="metrics">
+    <div class="card green">
+      <div class="card-label">Portfolio</div>
+      <div class="card-value green" id="portfolio">$100.00</div>
+      <div class="card-sub" id="portfolioChange">Starting balance</div>
+    </div>
+    <div class="card amber">
+      <div class="card-label">Day PnL</div>
+      <div class="card-value amber" id="dayPnl">$0.00</div>
+      <div class="card-sub" id="trades">0 trades today</div>
+    </div>
+    <div class="card blue">
+      <div class="card-label">Signals Found</div>
+      <div class="card-value" id="signalCount" style="color:var(--blue)">0</div>
+      <div class="card-sub" id="marketsScanned">0 markets scanned</div>
+    </div>
+    <div class="card green">
+      <div class="card-label">Win Rate</div>
+      <div class="card-value green" id="winRate">—</div>
+      <div class="card-sub">paper trades</div>
+    </div>
+  </div>
+
+  <!-- Signals + Activity -->
+  <div class="grid3">
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title">Live Signals</div>
+        <div class="badge amber" id="signalBadge">Scanning...</div>
+      </div>
+      <div class="signal-row header">
+        <div>Market</div>
+        <div>Dir</div>
+        <div>Price</div>
+        <div>Edge</div>
+        <div>Conf</div>
+      </div>
+      <div class="signals-scroll" id="signalsList">
+        <div style="color:var(--muted);font-size:12px;padding:20px 0;text-align:center;">Building price history...<br><span style="font-size:11px;opacity:0.6">Signals appear after ~5 scans</span></div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title">Activity Feed</div>
+        <div class="badge green">Live</div>
+      </div>
+      <div id="activityFeed">
+        <div class="activity-item">
+          <div class="activity-dot blue"></div>
+          <div>
+            <div class="activity-text">Bot started — paper trading mode</div>
+            <div class="activity-time" id="startTime"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- PnL chart + Risk -->
+  <div class="grid2">
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title">PnL History (Paper)</div>
+        <div class="badge green">Simulated</div>
+      </div>
+      <div class="chart-area" id="pnlChart">
+        <!-- bars injected by JS -->
+      </div>
+      <div style="display:flex;justify-content:space-between;margin-top:8px;font-size:10px;color:var(--muted);font-family:'Space Mono',monospace;">
+        <span>Oldest</span><span>Latest</span>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title">Risk Monitor</div>
+        <div class="badge green" id="riskStatus">Safe</div>
+      </div>
+
+      <div class="risk-row">
+        <div class="risk-label"><span>Daily loss used</span><span id="lossUsed">0.0%</span></div>
+        <div class="risk-bar"><div class="risk-fill green" id="lossBar" style="width:0%"></div></div>
+      </div>
+      <div class="risk-row">
+        <div class="risk-label"><span>Capital deployed</span><span id="capitalDeployed">0.0%</span></div>
+        <div class="risk-bar"><div class="risk-fill amber" id="capitalBar" style="width:0%"></div></div>
+      </div>
+      <div class="risk-row">
+        <div class="risk-label"><span>Signal confidence avg</span><span id="avgConf">—</span></div>
+        <div class="risk-bar"><div class="risk-fill green" id="confBar" style="width:0%"></div></div>
+      </div>
+
+      <div class="separator"></div>
+
+      <div style="font-size:12px;color:var(--muted);line-height:1.8;">
+        <div>Max trade size: <span style="color:var(--text)">$10.00 USDC</span></div>
+        <div>Daily loss cap: <span style="color:var(--text)">5.0%</span></div>
+        <div>Min edge: <span style="color:var(--text)">3.0%</span></div>
+        <div>Scan interval: <span style="color:var(--text)">30s</span></div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<div class="footer">POLYMARKET ANTIGRAVITY BOT &nbsp;|&nbsp; PAPER MODE &nbsp;|&nbsp; Built with py-clob-client + aiohttp</div>
+
+<script>
+// ── Simulated live data engine ─────────────────────────────────
+const state = {
+  scan: 0,
+  signals: [],
+  pnlHistory: [],
+  totalPnl: 0,
+  trades: 0,
+  wins: 0,
+  portfolio: 100,
+  countdown: 30,
+};
+
+// Sample markets for simulation
+const markets = [
+  {name:"76ers vs Knicks", price:0.095, fair:0.128, dir:"BUY", edge:0.033, conf:0.52},
+  {name:"Philadelphia Phillies vs Miami Marlins", price:0.710, fair:0.779, dir:"BUY", edge:0.069, conf:0.44},
+  {name:"Boston Red Sox vs Detroit Tigers", price:0.925, fair:0.883, dir:"SELL", edge:0.042, conf:0.48},
+  {name:"Flyers vs Hurricanes", price:0.635, fair:0.605, dir:"SELL", edge:0.030, conf:0.43},
+  {name:"Cleveland Guardians vs Kansas City Royals", price:0.095, fair:0.135, dir:"BUY", edge:0.040, conf:0.42},
+  {name:"Will BTC exceed $100k?", price:0.72, fair:0.68, dir:"SELL", edge:0.040, conf:0.55},
+  {name:"Fed rate cut by June?", price:0.38, fair:0.44, dir:"BUY", edge:0.060, conf:0.61},
+  {name:"Knicks spread -7.5", price:0.755, fair:0.706, dir:"SELL", edge:0.049, conf:0.50},
+];
+
+function fmtTime(d){
+  return d.toTimeString().slice(0,8);
+}
+
+function addActivity(text, type='blue'){
+  const feed = document.getElementById('activityFeed');
+  const item = document.createElement('div');
+  item.className = 'activity-item';
+  item.innerHTML = `<div class="activity-dot ${type}"></div><div><div class="activity-text">${text}</div><div class="activity-time">${fmtTime(new Date())}</div></div>`;
+  feed.insertBefore(item, feed.firstChild);
+  while(feed.children.length > 12) feed.removeChild(feed.lastChild);
+}
+
+function renderSignals(){
+  const list = document.getElementById('signalsList');
+  if(state.signals.length === 0){
+    list.innerHTML = '<div style="color:var(--muted);font-size:12px;padding:20px 0;text-align:center;">Building price history...<br><span style="font-size:11px;opacity:0.6">Signals appear after ~5 scans</span></div>';
+    return;
+  }
+  list.innerHTML = state.signals.map(s => `
+    <div class="signal-row">
+      <div class="market-name" title="${s.name}">${s.name}</div>
+      <div class="${s.dir==='BUY'?'dir-buy':'dir-sell'}">${s.dir}</div>
+      <div style="font-family:'Space Mono',monospace;font-size:11px">${s.price.toFixed(3)}</div>
+      <div>
+        <div style="font-family:'Space Mono',monospace;font-size:11px;color:var(--green)">${(s.edge*100).toFixed(1)}%</div>
+        <div class="edge-bar"><div class="edge-fill" style="width:${Math.min(s.edge*500,100)}%"></div></div>
+      </div>
+      <div style="font-size:11px;color:var(--muted)">${(s.conf*100).toFixed(0)}%</div>
+    </div>
+  `).join('');
+}
+
+function renderChart(){
+  const chart = document.getElementById('pnlChart');
+  if(state.pnlHistory.length === 0){
+    chart.innerHTML = '<div style="color:var(--muted);font-size:11px;margin:auto">No trades yet</div>';
+    return;
+  }
+  const max = Math.max(...state.pnlHistory.map(Math.abs), 0.01);
+  chart.innerHTML = state.pnlHistory.map(v => {
+    const h = Math.max((Math.abs(v)/max)*110, 4);
+    return `<div class="bar ${v>=0?'pos':'neg'}" style="height:${h}px" title="${v>=0?'+':''}${v.toFixed(2)}"></div>`;
+  }).join('');
+}
+
+function updateMetrics(){
+  document.getElementById('portfolio').textContent = '$' + state.portfolio.toFixed(2);
+  const pnl = state.totalPnl;
+  const pnlEl = document.getElementById('dayPnl');
+  pnlEl.textContent = (pnl>=0?'+':'') + '$' + pnl.toFixed(2);
+  pnlEl.style.color = pnl>=0?'var(--green)':'var(--red)';
+  document.getElementById('trades').textContent = state.trades + ' paper trades';
+  document.getElementById('signalCount').textContent = state.signals.length;
+  document.getElementById('marketsScanned').textContent = state.scan * 50 + ' total scans';
+  document.getElementById('winRate').textContent = state.trades > 0 ? Math.round(state.wins/state.trades*100)+'%' : '—';
+  document.getElementById('signalBadge').textContent = state.signals.length + ' active';
+  const lossUsedPct = Math.min(Math.abs(pnl)/state.portfolio*100/5*100, 100);
+  document.getElementById('lossUsed').textContent = (Math.abs(pnl)/state.portfolio*100).toFixed(1)+'%';
+  document.getElementById('lossBar').style.width = lossUsedPct+'%';
+  document.getElementById('lossBar').className = 'risk-fill ' + (lossUsedPct<50?'green':lossUsedPct<80?'amber':'red');
+  const avgConf = state.signals.length > 0 ? state.signals.reduce((a,s)=>a+s.conf,0)/state.signals.length : 0;
+  document.getElementById('avgConf').textContent = avgConf > 0 ? (avgConf*100).toFixed(0)+'%' : '—';
+  document.getElementById('confBar').style.width = (avgConf*100)+'%';
+}
+
+function runScan(){
+  state.scan++;
+  document.getElementById('scanCount').textContent = state.scan;
+
+  // After scan 3, start showing signals
+  if(state.scan >= 3){
+    const numSignals = 5 + Math.floor(Math.random()*4);
+    state.signals = markets.slice(0, numSignals).map(m => ({
+      ...m,
+      price: m.price + (Math.random()-0.5)*0.02,
+      edge: m.edge + (Math.random()-0.5)*0.01,
+    }));
+    document.getElementById('signalBadge').textContent = state.signals.length + ' active';
+    addActivity(`Signal scan complete — ${state.signals.length} signals found`, 'green');
+  } else {
+    addActivity(`Scan #${state.scan} — building price history (${state.scan}/5)`, 'blue');
+  }
+
+  // Simulate occasional paper trades
+  if(state.scan >= 5 && Math.random() > 0.5 && state.signals.length > 0){
+    const sig = state.signals[Math.floor(Math.random()*state.signals.length)];
+    const size = 1.5 + Math.random()*3;
+    const won = Math.random() > 0.45;
+    const pnl = won ? size * sig.edge : -size * 0.02;
+    state.totalPnl += pnl;
+    state.portfolio += pnl;
+    state.trades++;
+    if(won) state.wins++;
+    state.pnlHistory.push(pnl);
+    if(state.pnlHistory.length > 20) state.pnlHistory.shift();
+    addActivity(`[PAPER] ${sig.dir} $${size.toFixed(2)} — ${sig.name.slice(0,30)} — ${won?'WIN':'LOSS'} ${pnl>=0?'+':''}$${pnl.toFixed(2)}`, won?'green':'red');
+    renderChart();
+  }
+
+  addActivity(`Fetched 50 markets — scan #${state.scan} complete`, 'blue');
+  renderSignals();
+  updateMetrics();
+}
+
+// Countdown timer
+setInterval(()=>{
+  state.countdown--;
+  if(state.countdown <= 0){
+    state.countdown = 30;
+    runScan();
+  }
+  document.getElementById('countdown').textContent = state.countdown;
+}, 1000);
+
+// Init
+document.getElementById('startTime').textContent = fmtTime(new Date());
+runScan();
+</script>
+</body>
+</html>
