@@ -13,9 +13,10 @@ from strategy.signal_engine import SignalEngine
 from execution.order_manager import OrderManager
 from monitoring.risk_manager import RiskManager
 from monitoring.alerts import AlertSystem
+from server import keep_alive
 
-
-async def main():
+async def main(): 
+    keep_alive()
     # ── Load config ───────────────────────────────────────────
     config = load_config()
 
