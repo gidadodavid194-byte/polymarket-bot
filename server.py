@@ -1,8 +1,10 @@
 from flask import Flask, jsonify
+from flask_cors import CORS
 from threading import Thread
 from datetime import datetime
 
 app = Flask(__name__)
+CORS(app)
 
 bot_state = {
     "running": True,
