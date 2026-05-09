@@ -1,8 +1,7 @@
 // ── Config ────────────────────────────────────────────
 const BOT_URL = 'https://polymarket-bot-4zuw.onrender.com';
-const GAMMA_API = 'https://gamma-api.polymarket.com';
 const POLL_BOT = 15000;   // poll bot every 15s
-const POLL_GAMMA = 20000; // poll Gamma every 20s
+const POLL_MKT = 20000;   // poll markets every 20s
 
 // ── State ─────────────────────────────────────────────
 let botState = null;
@@ -184,37 +183,19 @@ function addActivity(text, type) {
 // ── Fetch live markets from Gamma API ───────────────
 async function fetchGammaMarkets() {
   try {
-    const url = GAMMA_API + '/markets?active=true&closed=false&limit=50&order=volume24hr&ascending=false';
-    const r = await fetch(url);
-    if (!r.ok) throw new Error('Gamma HTTP ' + r.status);
-    const data = await r.json();
-    const markets = Array.isArray(data) ? data : (data.markets || []);
+    // Fetch from our own proxy — avoids CORS issues with Gamma API
+    const r = await fetch(BOT_URL + '/api/markets', { mode: 'cors' });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const markets = await r.json();
 
-    liveMarkets = markets.map(m => {
-      let yesPrice = 0;
-      // Parse outcomePrices
-      const op = m.outcomePrices;
-      if (op) {
-        try {
-          const arr = typeof op === 'string' ? JSON.parse(op) : op;
-          if (Array.isArray(arr) && arr.length > 0) yesPrice = parseFloat(arr[0]) || 0;
-        } catch(e) { yesPrice = parseFloat(op) || 0; }
-      }
-      // Fallback to tokens
-      if (yesPrice <= 0 && m.tokens && m.tokens.length) {
-        const yt = m.tokens.find(t => (t.outcome||'').toLowerCase() === 'yes') || m.tokens[0];
-        yesPrice = parseFloat(yt.price || yt.lastTradePrice) || 0;
-      }
-      if (yesPrice <= 0 || yesPrice >= 1) return null;
+    if (!Array.isArray(markets) || markets.length === 0) {
+      // Fallback: bot hasn't scanned yet — show waiting message
+      document.getElementById('mktList').innerHTML =
+        '<div class="empty-msg">Bot is starting — waiting for first market scan…</div>';
+      return;
+    }
 
-      return {
-        market_id: m.conditionId || m.condition_id || '',
-        question: m.question || 'Unknown',
-        price: yesPrice,
-        volume_24h: parseFloat(m.volume24hr || m.volume || 0),
-        end_date: m.endDate || ''
-      };
-    }).filter(Boolean);
+    liveMarkets = markets;
 
     renderMarkets(liveMarkets);
 
@@ -331,5 +312,5 @@ initChart();
 addActivity('Dashboard initialized — connecting to Polymarket & bot API…', 'b');
 fetchGammaMarkets();
 fetchBotState();
-setInterval(fetchGammaMarkets, POLL_GAMMA);
+setInterval(fetchGammaMarkets, POLL_MKT);
 setInterval(fetchBotState, POLL_BOT);
