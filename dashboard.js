@@ -12,6 +12,7 @@ let chart = null;
 let priceHist = {};  // market_id -> {prices:[], labels:[]}
 let activityCount = 0;
 let lastScan = -1;
+let modalAction = 'BUY'; // 'BUY' or 'SELL'
 
 // ── Clock ─────────────────────────────────────────────
 function updateClock() {
@@ -92,6 +93,84 @@ function selectMarket(mkt) {
   document.querySelectorAll('.mkt-row').forEach(r => r.classList.remove('selected'));
   const row = document.querySelector(`[data-mid="${id}"]`);
   if (row) row.classList.add('selected');
+
+  // Load history from CLOB API
+  if (mkt.token_id) loadMarketHistory(mkt.token_id, id);
+}
+
+async function loadMarketHistory(tokenId, marketId) {
+  try {
+    const res = await fetch(`https://clob.polymarket.com/prices-history?market=${tokenId}&interval=1d&fidelity=60`);
+    if (!res.ok) return;
+    const data = await res.json();
+    if (data.history && data.history.length > 0) {
+      const h = { prices: [], labels: [] };
+      data.history.forEach(pt => {
+        h.prices.push(pt.p);
+        const d = new Date(pt.t * 1000);
+        h.labels.push(d.toUTCString().slice(17, 25));
+      });
+      priceHist[marketId] = h;
+      
+      if (selectedMkt && selectedMkt.market_id === marketId) {
+        chart.data.labels = h.labels;
+        chart.data.datasets[0].data = h.prices;
+        chart.update('none');
+      }
+    }
+  } catch(e) {
+    console.error("Failed to load history", e);
+  }
+}
+
+// ── Trade Modal ───────────────────────────────────────
+function openTradeModal() {
+  if (!selectedMkt) return alert("Select a market first");
+  document.getElementById('modalMktName').textContent = selectedMkt.question;
+  document.getElementById('modalPrice').value = selectedMkt.price.toFixed(3);
+  setModalAction('BUY');
+  document.getElementById('tradeModal').classList.add('open');
+}
+
+function closeTradeModal() {
+  document.getElementById('tradeModal').classList.remove('open');
+}
+
+function setModalAction(action) {
+  modalAction = action;
+  document.getElementById('modalBuyBtn').classList.toggle('active', action === 'BUY');
+  document.getElementById('modalSellBtn').classList.toggle('active', action === 'SELL');
+  const submitBtn = document.getElementById('modalSubmit');
+  submitBtn.className = 'modal-btn confirm ' + (action === 'SELL' ? 'sell' : '');
+  submitBtn.textContent = 'Confirm ' + action;
+}
+
+async function submitTrade() {
+  if (!selectedMkt) return;
+  const size = document.getElementById('modalSize').value;
+  const price = document.getElementById('modalPrice').value;
+  
+  const payload = {
+    market_id: selectedMkt.market_id,
+    token_id: selectedMkt.token_id,
+    question: selectedMkt.question,
+    direction: modalAction,
+    size: parseFloat(size),
+    price: parseFloat(price)
+  };
+
+  try {
+    const res = await fetch(BOT_URL + '/api/trade', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    addActivity(`Manual <b>${modalAction}</b> submitted for $${size} @ ${price}`, modalAction==='BUY'?'g':'r');
+    closeTradeModal();
+  } catch (e) {
+    addActivity('Failed to submit manual trade: ' + e.message, 'r');
+  }
 }
 
 // ── Render Live Markets ──────────────────────────────
@@ -137,9 +216,14 @@ function renderSignals(sigs) {
       <div style="color:var(--t2)">${s.price.toFixed(4)} <span style="color:var(--t3)">→</span> ${s.fair.toFixed(4)}</div>
       <div style="color:var(--green)">${s.edge}%</div>
       <div style="color:var(--t2)">${s.confidence}%</div>
-      <div style="color:var(--t2);font-size:9px">${s.time || '—'}</div>
+      <div style="color:var(--t2);font-size:9px"><button class="trade-btn ${isBuy ? 'buy' : 'sell'}" onclick="prefillTrade()">${s.direction}</button></div>
     </div>`;
   }).join('');
+}
+
+function prefillTrade() {
+  event.stopPropagation();
+  alert("Please select the market from the Live Markets tab to trade manually.");
 }
 
 // ── Render Trades ────────────────────────────────────
@@ -203,9 +287,11 @@ async function fetchGammaMarkets() {
     if (!selectedMkt && liveMarkets.length > 0) {
       selectMarket(liveMarkets[0]);
     } else if (selectedMkt) {
-      // Update selected market price
+      // Update selected market price, do NOT trigger history load again
       const updated = liveMarkets.find(m => m.market_id === selectedMkt.market_id);
-      if (updated) selectMarket(updated);
+      if (updated) {
+        document.getElementById('chartPrice').textContent = (updated.price || 0).toFixed(3);
+      }
     }
 
     addActivity(`Fetched <b>${liveMarkets.length}</b> live markets from Polymarket`, 'g');

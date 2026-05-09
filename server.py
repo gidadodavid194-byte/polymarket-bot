@@ -39,6 +39,7 @@ bot_state = {
 }
 
 _markets_data = []  # latest scanned markets from Gamma API
+_manual_orders_queue = [] # Queue for dashboard manual trades
 
 
 # ── Public helpers called by main.py ──────────────────────────────────────
@@ -85,6 +86,15 @@ def set_markets(markets_list):
     global _markets_data
     with _lock:
         _markets_data = markets_list[:100]
+
+
+def get_manual_orders():
+    """Retrieve and clear queued manual orders."""
+    global _manual_orders_queue
+    with _lock:
+        orders = list(_manual_orders_queue)
+        _manual_orders_queue.clear()
+        return orders
 
 
 # ── Routes ────────────────────────────────────────────────────────────────
@@ -146,6 +156,23 @@ def markets():
     with _lock:
         data = list(_markets_data)
     return jsonify(data), 200
+
+from flask import request
+
+@app.route("/api/trade", methods=["POST", "OPTIONS"])
+def trade():
+    """Receive manual trades from dashboard."""
+    if request.method == "OPTIONS":
+        return jsonify({}), 200
+        
+    data = request.json
+    if not data:
+        return jsonify({"error": "No data provided"}), 400
+        
+    with _lock:
+        _manual_orders_queue.append(data)
+        
+    return jsonify({"status": "queued", "order": data}), 200
 
 
 # ── Entry points ──────────────────────────────────────────────────────────

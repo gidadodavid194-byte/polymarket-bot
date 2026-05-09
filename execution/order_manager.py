@@ -112,6 +112,27 @@ class OrderManager:
         else:
             return await self._live_order(order, signal)
 
+    async def place_manual_order(self, market_id: str, token_id: str, direction: str, price: float, size_usdc: float, question: str) -> Optional[Order]:
+        """Place a manual order directly from the dashboard."""
+        order = Order(
+            market_id=market_id,
+            token_id=token_id,
+            direction=direction,
+            price=price,
+            size_usdc=size_usdc,
+        )
+
+        class DummySignal:
+            def __init__(self, q):
+                self.question = q
+
+        signal = DummySignal(question)
+
+        if self.paper_trading:
+            return await self._paper_order(order, signal)
+        else:
+            return await self._live_order(order, signal)
+
     async def _paper_order(self, order: Order, signal) -> Order:
         """Simulate an order without touching real money."""
         order.status = "FILLED"

@@ -13,7 +13,7 @@ from strategy.signal_engine import SignalEngine
 from execution.order_manager import OrderManager
 from monitoring.risk_manager import RiskManager
 from monitoring.alerts import AlertSystem
-from server import keep_alive, update_state, add_signal, add_trade, set_markets
+from server import keep_alive, update_state, add_signal, add_trade, set_markets, get_manual_orders
 
 
 async def main():
@@ -157,11 +157,46 @@ async def main():
 
                     await alerts.send_trade_placed(order, config.paper_trading)
 
-            # Step 4 — Print risk status every 5 scans ─────────
+            # Step 4 — Process Manual Orders ───────────────────
+            manual_orders = get_manual_orders()
+            for mo in manual_orders:
+                logger.info(f"Processing manual order: {mo}")
+                order = await orders.place_manual_order(
+                    market_id=mo.get("market_id", ""),
+                    token_id=mo.get("token_id", ""),
+                    direction=mo.get("direction", "BUY").upper(),
+                    price=float(mo.get("price", 0.5)),
+                    size_usdc=float(mo.get("size", 10.0)),
+                    question=mo.get("question", "Manual Trade")
+                )
+                
+                if order:
+                    # Fake PnL for paper mode manual trades just to see it work
+                    if config.paper_trading:
+                        # Random small PnL for visual feedback in dashboard
+                        import random
+                        simulated_pnl = round(float(mo.get("size", 10.0)) * random.uniform(-0.1, 0.2), 4)
+                        order.pnl = simulated_pnl
+                        risk.record_trade(order.size_usdc, simulated_pnl)
+                        new_balance = risk_status["current_balance"] + simulated_pnl
+                        risk.update_balance(new_balance)
+                        
+                    add_trade(order, pnl=getattr(order, 'pnl', 0.0))
+                    
+                    # Refresh risk status snapshot after trade
+                    risk_status = risk.get_status()
+                    update_state(
+                        balance=risk_status["current_balance"],
+                        day_pnl=risk_status["total_pnl"],
+                        trades_today=risk_status["trades_placed"],
+                        win_rate=risk_status["win_rate"],
+                    )
+
+            # Step 5 — Print risk status every 5 scans ─────────
             if scan_count % 5 == 0:
                 risk.print_status()
 
-            # Step 5 — Send daily summary every 120 scans ──────
+            # Step 6 — Send daily summary every 120 scans ──────
             if scan_count % 120 == 0:
                 await alerts.send_daily_summary(risk.get_status())
 
