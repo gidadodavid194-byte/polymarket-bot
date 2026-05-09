@@ -11,10 +11,11 @@ Endpoints:
   GET /api/stats   — lightweight summary for polling dashboards
 """
 
-from flask import Flask, jsonify
+from flask import Flask, jsonify, send_from_directory
 from flask_cors import CORS
 from threading import Thread, Lock
 from datetime import datetime
+import os
 
 app  = Flask(__name__)
 CORS(app)
@@ -36,6 +37,8 @@ bot_state = {
     "last_scan":       "",
     "halt_reason":     None,
 }
+
+_markets_data = []  # latest scanned markets from Gamma API
 
 
 # ── Public helpers called by main.py ──────────────────────────────────────
@@ -77,11 +80,34 @@ def add_trade(order, pnl: float = 0.0):
         bot_state["recent_trades"] = [entry] + bot_state["recent_trades"][:19]
 
 
+def set_markets(markets_list):
+    """Store latest scanned markets for dashboard display."""
+    global _markets_data
+    with _lock:
+        _markets_data = markets_list[:100]
+
+
 # ── Routes ────────────────────────────────────────────────────────────────
 
 @app.route("/")
 def home():
     return "Polymarket Antigravity Bot is running!"
+
+
+@app.route("/dashboard")
+def dashboard():
+    """Serve the live trading dashboard."""
+    return send_from_directory(os.path.dirname(__file__) or ".", "dashboard.html")
+
+
+@app.route("/dashboard.css")
+def dashboard_css():
+    return send_from_directory(os.path.dirname(__file__) or ".", "dashboard.css")
+
+
+@app.route("/dashboard.js")
+def dashboard_js():
+    return send_from_directory(os.path.dirname(__file__) or ".", "dashboard.js")
 
 
 @app.route("/health")
@@ -112,6 +138,14 @@ def stats():
             "last_scan":       bot_state["last_scan"],
         }
     return jsonify(snapshot), 200
+
+
+@app.route("/api/markets")
+def markets():
+    """Return latest scanned live markets."""
+    with _lock:
+        data = list(_markets_data)
+    return jsonify(data), 200
 
 
 # ── Entry points ──────────────────────────────────────────────────────────

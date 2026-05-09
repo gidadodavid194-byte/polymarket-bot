@@ -13,7 +13,7 @@ from strategy.signal_engine import SignalEngine
 from execution.order_manager import OrderManager
 from monitoring.risk_manager import RiskManager
 from monitoring.alerts import AlertSystem
-from server import keep_alive, update_state, add_signal, add_trade
+from server import keep_alive, update_state, add_signal, add_trade, set_markets
 
 
 async def main():
@@ -89,7 +89,8 @@ async def main():
                 await asyncio.sleep(config.scan_interval_seconds)
                 continue
 
-            # ── Push scan progress to dashboard ───────────────
+            # ── Push live market data + scan progress to dashboard ─
+            set_markets(markets)
             risk_status = risk.get_status()
             update_state(
                 scan_count=scan_count,
