@@ -13,10 +13,13 @@ from strategy.signal_engine import SignalEngine
 from execution.order_manager import OrderManager
 from monitoring.risk_manager import RiskManager
 from monitoring.alerts import AlertSystem
-from server import keep_alive
+from server import keep_alive, update_state, add_signal, add_trade
 
-async def main(): 
+
+async def main():
+    # ── Start Flask status server ─────────────────────────────
     keep_alive()
+
     # ── Load config ───────────────────────────────────────────
     config = load_config()
 
@@ -47,6 +50,14 @@ async def main():
     starting_balance = 100.0 if config.paper_trading else 0.0
     risk.set_starting_balance(starting_balance)
 
+    # Push initial state to dashboard
+    update_state(
+        mode=mode,
+        running=True,
+        balance=starting_balance,
+        day_pnl=0.0,
+    )
+
     # ── Send startup alert to Telegram ────────────────────────
     await alerts.send_startup(config.paper_trading)
 
@@ -61,20 +72,37 @@ async def main():
             scan_count += 1
             logger.info(f"─── Scan #{scan_count} ───────────────────────")
 
-            # Check if bot is still allowed to trade
+            # ── Check if bot is still allowed to trade ────────
             if not risk.bot_running:
                 logger.warning(f"Bot halted: {risk.halt_reason}")
+                update_state(
+                    running=False,
+                    halt_reason=risk.halt_reason,
+                )
                 await asyncio.sleep(60)
                 continue
 
-            # Step 1 — Fetch live market data
+            # Step 1 — Fetch live market data ──────────────────
             markets = await feed.scan_all_markets()
             if not markets:
                 logger.warning("No markets returned — retrying next scan")
                 await asyncio.sleep(config.scan_interval_seconds)
                 continue
 
-            # Step 2 — Find signals
+            # ── Push scan progress to dashboard ───────────────
+            risk_status = risk.get_status()
+            update_state(
+                scan_count=scan_count,
+                markets_scanned=len(markets),
+                balance=risk_status["current_balance"],
+                day_pnl=risk_status["total_pnl"],
+                trades_today=risk_status["trades_placed"],
+                win_rate=risk_status["win_rate"],
+                running=risk.bot_running,
+                halt_reason=risk.halt_reason,
+            )
+
+            # Step 2 — Find signals ────────────────────────────
             signals = engine.scan_markets(markets)
 
             if not signals:
@@ -82,12 +110,14 @@ async def main():
             else:
                 logger.info(f"{len(signals)} signal(s) found — evaluating...")
 
-            # Step 3 — Place trades for valid signals
+            # Step 3 — Place trades for valid signals ──────────
             for signal in signals:
+                # Push signal to dashboard immediately
+                add_signal(signal)
+
                 # Check risk manager allows this trade
-                allowed, reason = risk.check_trade_allowed(
-                    signal.edge * config.max_trade_size_usdc
-                )
+                trade_size_usdc = signal.edge * config.max_trade_size_usdc
+                allowed, reason = risk.check_trade_allowed(trade_size_usdc)
                 if not allowed:
                     logger.warning(f"Trade blocked: {reason}")
                     continue
@@ -98,13 +128,39 @@ async def main():
                 # Place the order
                 order = await orders.place_order(signal)
                 if order:
+                    # Simulate simple PnL in paper mode:
+                    # assume we exit at fair price → pnl = edge * size
+                    simulated_pnl = round(signal.edge * order.size_usdc, 4)
+                    order.pnl = simulated_pnl
+
+                    # Record in risk manager
+                    risk.record_trade(order.size_usdc, simulated_pnl)
+
+                    # Update balance in risk manager
+                    new_balance = (
+                        risk_status["current_balance"] + simulated_pnl
+                    )
+                    risk.update_balance(new_balance)
+
+                    # Push trade to dashboard
+                    add_trade(order, pnl=simulated_pnl)
+
+                    # Refresh risk status snapshot after trade
+                    risk_status = risk.get_status()
+                    update_state(
+                        balance=risk_status["current_balance"],
+                        day_pnl=risk_status["total_pnl"],
+                        trades_today=risk_status["trades_placed"],
+                        win_rate=risk_status["win_rate"],
+                    )
+
                     await alerts.send_trade_placed(order, config.paper_trading)
 
-            # Step 4 — Print risk status every 5 scans
+            # Step 4 — Print risk status every 5 scans ─────────
             if scan_count % 5 == 0:
                 risk.print_status()
 
-            # Step 5 — Send daily summary every 120 scans
+            # Step 5 — Send daily summary every 120 scans ──────
             if scan_count % 120 == 0:
                 await alerts.send_daily_summary(risk.get_status())
 
@@ -113,7 +169,16 @@ async def main():
 
     except KeyboardInterrupt:
         logger.info("Bot stopped by user")
+        update_state(running=False)
         await alerts.send_daily_summary(risk.get_status())
+
+    except Exception as exc:
+        logger.exception(f"Unexpected error in main loop: {exc}")
+        update_state(running=False, halt_reason=str(exc))
+        try:
+            await alerts.send_error(str(exc))
+        except Exception:
+            pass
 
     finally:
         await feed.stop()

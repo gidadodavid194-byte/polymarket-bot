@@ -45,5 +45,3 @@ def load_config():
         min_edge_threshold=float(_optional("MIN_EDGE_THRESHOLD", "0.03")),
         paper_trading=_optional("PAPER_TRADING", "true").lower() == "true",
     )
-
-CONFIG = load_config()

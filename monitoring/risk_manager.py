@@ -44,10 +44,11 @@ class RiskManager:
         self._check_daily_loss_limit()
 
     def record_trade(self, size_usdc: float, pnl: float):
-        """Record a completed trade's result."""
+        """Record a completed trade's result and update running balance."""
         self.stats.trades_placed += 1
         self.stats.total_traded += size_usdc
         self.stats.total_pnl += pnl
+        self.stats.current_balance += pnl   # keep balance in sync with PnL
 
         if pnl > 0:
             self.stats.trades_won += 1
@@ -56,7 +57,8 @@ class RiskManager:
 
         logger.info(
             f"Trade recorded — PnL: ${pnl:+.2f} | "
-            f"Day total: ${self.stats.total_pnl:+.2f}"
+            f"Day total: ${self.stats.total_pnl:+.2f} | "
+            f"Balance: ${self.stats.current_balance:.2f}"
         )
 
     def _check_daily_loss_limit(self):
