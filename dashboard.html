@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Polymarket Antigravity — Live Dashboard</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600;700&family=Inter:wght@400;500;600&display=swap');
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --bg:#020b10;--bg1:#05131b;--bg2:#091a24;--bg3:#0d2030;
+  --border:#0f2535;--border2:#1a3a50;
+  --green:#00ff88;--green2:#00cc6a;--gdim:rgba(0,255,136,.08);
+  --red:#ff3355;--rdim:rgba(255,51,85,.08);
+  --amber:#ffaa00;--blue:#00aaff;--purple:#aa55ff;
+  --text:#c8e0f0;--t2:#5a8aa8;--t3:#1e3a4a;
+  --mono:'IBM Plex Mono',monospace;--sans:'Inter',sans-serif;
+}
+html,body{height:100%;overflow:hidden}
+body{background:var(--bg);color:var(--text);font-family:var(--sans);display:flex;flex-direction:column}
+body::after{content:'';position:fixed;inset:0;background:repeating-linear-gradient(0deg,transparent,transparent 3px,rgba(0,0,0,.02) 3px,rgba(0,0,0,.02) 4px);pointer-events:none;z-index:9999}
+
+/* TOPBAR */
+.topbar{height:46px;display:flex;align-items:center;justify-content:space-between;padding:0 20px;background:var(--bg1);border-bottom:1px solid var(--border);flex-shrink:0}
+.logo{font-family:var(--mono);font-size:13px;font-weight:700;letter-spacing:.2em;color:var(--green)}
+.logo span{color:var(--t2)}
+.topbar-right{display:flex;align-items:center;gap:12px}
+.badge{font-family:var(--mono);font-size:10px;padding:4px 10px;border-radius:3px;border:1px solid;letter-spacing:.08em}
+.badge-paper{color:var(--amber);border-color:rgba(255,170,0,.3);background:rgba(255,170,0,.05)}
+.badge-live{color:var(--green);border-color:rgba(0,255,136,.3);background:var(--gdim)}
+.badge-dead{color:var(--red);border-color:rgba(255,51,85,.3);background:var(--rdim)}
+.dot{width:6px;height:6px;border-radius:50%;background:currentColor;display:inline-block;margin-right:5px;animation:blink 1.2s infinite}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.2}}
+.clock{font-family:var(--mono);font-size:11px;color:var(--t2)}
+
+/* LAYOUT */
+.layout{display:grid;grid-template-columns:210px 1fr 270px;gap:1px;background:var(--border);flex:1;overflow:hidden}
+.col{background:var(--bg1);display:flex;flex-direction:column;overflow:hidden}
+
+/* PANEL HEADER */
+.ph{display:flex;align-items:center;justify-content:space-between;padding:8px 14px;border-bottom:1px solid var(--border);flex-shrink:0}
+.pt{font-family:var(--mono);font-size:9px;color:var(--t2);text-transform:uppercase;letter-spacing:.14em}
+.pb{font-family:var(--mono);font-size:9px;padding:2px 8px;border-radius:2px}
+.pb-g{color:var(--green);background:var(--gdim)}
+.pb-a{color:var(--amber);background:rgba(255,170,0,.08)}
+.pb-b{color:var(--blue);background:rgba(0,170,255,.08)}
+.pb-r{color:var(--red);background:var(--rdim)}
+
+/* LEFT METRICS */
+.metric{padding:12px 14px;border-bottom:1px solid var(--border)}
+.ml{font-family:var(--mono);font-size:8px;color:var(--t2);text-transform:uppercase;letter-spacing:.14em;margin-bottom:5px}
+.mv{font-family:var(--mono);font-size:24px;font-weight:700;line-height:1}
+.mv-g{color:var(--green)}.mv-r{color:var(--red)}.mv-a{color:var(--amber)}.mv-b{color:var(--blue)}
+.ms{font-family:var(--mono);font-size:10px;color:var(--t2);margin-top:3px}
+.ms-g{color:var(--green2)}.ms-r{color:var(--red)}
+
+/* RISK BARS */
+.risk-wrap{padding:12px 14px}
+.risk-title{font-family:var(--mono);font-size:8px;color:var(--t2);text-transform:uppercase;letter-spacing:.14em;margin-bottom:10px}
+.rbar{margin-bottom:8px}
+.rl{display:flex;justify-content:space-between;font-family:var(--mono);font-size:9px;color:var(--t2);margin-bottom:3px}
+.rv{color:var(--text)}
+.rb{height:2px;background:var(--bg3);border-radius:1px}
+.rf{height:100%;border-radius:1px;transition:width 1s ease}
+.rf-g{background:var(--green)}.rf-a{background:var(--amber)}.rf-r{background:var(--red)}.rf-b{background:var(--blue)}
+
+/* CENTER - CHART */
+.chart-header{display:flex;align-items:center;gap:14px;padding:8px 14px;border-bottom:1px solid var(--border);flex-shrink:0}
+.chart-price{font-family:var(--mono);font-size:18px;font-weight:700;color:var(--green)}
+.chart-chg{font-family:var(--mono);font-size:11px;color:var(--t2)}
+.chart-vol{font-family:var(--mono);font-size:10px;color:var(--t2);margin-left:auto}
+.chart-wrap{flex:1;padding:8px;min-height:0;position:relative}
+
+/* SIGNALS */
+.signals-col{grid-row:2;display:flex;flex-direction:column;overflow:hidden}
+.center-col{grid-column:2;display:grid;grid-template-rows:1fr 200px;gap:1px;background:var(--border)}
+.sig-hdr,.sig-row{display:grid;grid-template-columns:1fr 52px 80px 58px 58px 80px;gap:4px;padding:5px 14px;font-family:var(--mono);font-size:10px;align-items:center}
+.sig-hdr{font-size:8px;color:var(--t2);text-transform:uppercase;letter-spacing:.1em;border-bottom:1px solid var(--border);padding-bottom:6px;flex-shrink:0}
+.sig-scroll{flex:1;overflow-y:auto}
+.sig-scroll::-webkit-scrollbar{width:2px}
+.sig-scroll::-webkit-scrollbar-thumb{background:var(--border2)}
+.sig-row{border-bottom:1px solid rgba(15,37,53,.5);cursor:pointer;transition:background .1s}
+.sig-row:hover{background:var(--bg2)}
+.sig-row.buy{border-left:2px solid var(--green)}
+.sig-row.sell{border-left:2px solid var(--red)}
+.dir-b{color:var(--green);font-weight:700}
+.dir-s{color:var(--red);font-weight:700}
+.mn{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--text);font-size:9px}
+.trade-btn{padding:3px 8px;border-radius:2px;border:1px solid;cursor:pointer;font-family:var(--mono);font-size:8px;font-weight:700;letter-spacing:.05em;transition:all .15s;background:transparent}
+.trade-btn.buy{color:var(--green);border-color:rgba(0,255,136,.3)}
+.trade-btn.buy:hover{background:var(--green);color:var(--bg)}
+.trade-btn.sell{color:var(--red);border-color:rgba(255,51,85,.3)}
+.trade-btn.sell:hover{background:var(--red);color:#fff}
+@keyframes flash{0%{background:rgba(0,255,136,.15)}100%{background:transparent}}
+.sig-row.new{animation:flash .8s ease-out}
+
+/* RIGHT ACTIVITY */
+.act-scroll{flex:1;overflow-y:auto;padding:4px 0}
+.act-scroll::-webkit-scrollbar{width:2px}
+.act-scroll::-webkit-scrollbar-thumb{background:var(--border2)}
+.act-item{display:flex;gap:8px;padding:6px 14px;border-bottom:1px solid rgba(15,37,53,.4)}
+.act-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0;margin-top:3px}
+.act-dot.g{background:var(--green)}.act-dot.r{background:var(--red)}.act-dot.a{background:var(--amber)}.act-dot.b{background:var(--blue)}
+.act-time{font-family:var(--mono);font-size:8px;color:var(--t2);white-space:nowrap}
+.act-text{font-size:10px;color:var(--t2);line-height:1.4}
+.act-text b{color:var(--text)}
+
+/* TRADES TABLE */
+.trades-section{border-top:1px solid var(--border);flex-shrink:0;max-height:190px;overflow-y:auto}
+.trades-section::-webkit-scrollbar{width:2px}
+.trades-section::-webkit-scrollbar-thumb{background:var(--border2)}
+.tr-hdr,.tr-row{display:grid;grid-template-columns:44px 50px 60px 60px 60px;gap:4px;padding:4px 14px;font-family:var(--mono);font-size:10px;align-items:center}
+.tr-hdr{font-size:8px;color:var(--t2);text-transform:uppercase;letter-spacing:.1em;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--bg1)}
+.tr-row{border-bottom:1px solid rgba(15,37,53,.4)}
+.tr-buy{color:var(--green)}.tr-sell{color:var(--red)}
+.pnl-pos{color:var(--green)}.pnl-neg{color:var(--red)}
+
+/* HALT BANNER */
+.halt-banner{display:none;background:var(--rdim);border:1px solid rgba(255,51,85,.3);color:var(--red);font-family:var(--mono);font-size:11px;padding:8px 16px;text-align:center;flex-shrink:0}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="logo">POLY<span>/</span>ANTIGRAVITY<span>//</span>TERMINAL</div>
+  <div class="topbar-right">
+    <div class="clock" id="clock">00:00:00</div>
+    <div class="badge badge-paper" id="modeBadge">⚠ PAPER</div>
+    <div class="badge badge-dead" id="connBadge"><span class="dot"></span><span id="connTxt">CONNECTING</span></div>
+  </div>
+</div>
+
+<div class="halt-banner" id="haltBanner"></div>
+
+<div class="layout">
+  <!-- LEFT -->
+  <div class="col">
+    <div class="ph"><div class="pt">Portfolio</div><div class="pb pb-g" id="botStatus">RUNNING</div></div>
+    <div class="metric">
+      <div class="ml">Balance</div>
+      <div class="mv mv-g" id="balance">$100.00</div>
+      <div class="ms" id="balSub">Paper mode</div>
+    </div>
+    <div class="metric">
+      <div class="ml">Day PnL</div>
+      <div class="mv mv-a" id="dayPnl">+$0.00</div>
+      <div class="ms" id="pnlSub">0 trades today</div>
+    </div>
+    <div class="metric">
+      <div class="ml">Win Rate</div>
+      <div class="mv mv-b" id="winRate">—</div>
+      <div class="ms" id="winSub">no trades yet</div>
+    </div>
+    <div class="metric">
+      <div class="ml">Markets / Scan</div>
+      <div class="mv mv-g" id="mktCount">0</div>
+      <div class="ms" id="scanSub">Scan #0</div>
+    </div>
+    <div class="risk-wrap">
+      <div class="risk-title">Risk Monitor</div>
+      <div class="rbar">
+        <div class="rl"><span>Daily loss</span><span class="rv" id="lossVal">0.0%</span></div>
+        <div class="rb"><div class="rf rf-g" id="lossBar" style="width:0%"></div></div>
+      </div>
+      <div class="rbar">
+        <div class="rl"><span>Avg confidence</span><span class="rv" id="confVal">—</span></div>
+        <div class="rb"><div class="rf rf-b" id="confBar" style="width:0%"></div></div>
+      </div>
+      <div class="rbar">
+        <div class="rl"><span>Avg edge</span><span class="rv" id="edgeVal">—</span></div>
+        <div class="rb"><div class="rf rf-g" id="edgeBar" style="width:0%"></div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- CENTER -->
+  <div class="center-col">
+    <div class="col">
+      <div class="chart-header">
+        <div class="chart-price" id="chartPrice">0.000</div>
+        <div class="chart-chg" id="chartChg">—</div>
+        <div class="chart-vol" id="chartVol">Last scan: —</div>
+      </div>
+      <div class="chart-wrap"><canvas id="priceChart"></canvas></div>
+    </div>
+    <div class="col">
+      <div class="ph">
+        <div class="pt">Live Signals</div>
+        <div class="pb pb-a" id="sigBadge">Scanning…</div>
+      </div>
+      <div class="sig-hdr">
+        <div>Market</div><div>Dir</div><div>Price→Fair</div><div>Edge</div><div>Conf</div><div>Action</div>
+      </div>
+      <div class="sig-scroll" id="sigList">
+        <div style="padding:20px;text-align:center;color:var(--t2);font-family:var(--mono);font-size:10px">Waiting for signals…</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- RIGHT -->
+  <div class="col">
+    <div class="ph"><div class="pt">Activity Feed</div><div class="pb pb-g">Live</div></div>
+    <div class="act-scroll" id="actFeed">
+      <div class="act-item">
+        <div class="act-dot b"></div>
+        <div><div class="act-text">Dashboard loaded</div><div class="act-time" id="loadTime"></div></div>
+      </div>
+    </div>
+    <div class="trades-section">
+      <div class="ph" style="border-top:1px solid var(--border)"><div class="pt">Recent Trades</div><div class="pb pb-b" id="tradeBadge">0 today</div></div>
+      <div class="tr-hdr"><div>Dir</div><div>Size</div><div>Price</div><div>PnL</div><div>Time</div></div>
+      <div id="tradeList"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const BOT_URL = 'https://polymarket-bot-4zuw.onrender.com';
+let state = null, connected = false, lastScan = -1;
+let chart = null, pxHist = [], fvHist = [], lbHist = [];
+
+// Clock
+setInterval(()=>{
+  document.getElementById('clock').textContent = new Date().toUTCString().slice(17,25)+' UTC';
+},1000);
+document.getElementById('loadTime').textContent = new Date().toUTCString().slice(17,25);
+
+// Chart
+function initChart(){
+  const ctx = document.getElementById('priceChart').getContext('2d');
+  chart = new Chart(ctx,{
+    type:'line',
+    data:{labels:[],datasets:[
+      {label:'Price',data:[],borderColor:'#00ff88',backgroundColor:'rgba(0,255,136,.06)',borderWidth:1.5,pointRadius:0,fill:true,tension:.35},
+      {label:'Fair',data:[],borderColor:'#ffaa00',borderWidth:1,borderDash:[4,4],pointRadius:0,fill:false,tension:.35}
+    ]},
+    options:{
+      responsive:true,maintainAspectRatio:false,animation:{duration:400},
+      plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>(c.parsed.y*100).toFixed(1)+'%'}}},
+      scales:{
+        x:{display:false},
+        y:{grid:{color:'rgba(15,37,53,.7)'},ticks:{color:'#1e3a4a',font:{family:'IBM Plex Mono',size:9},callback:v=>(v*100).toFixed(0)+'%'}}
+      }
+    }
+  });
+}
+
+function pushChart(signals){
+  if(!signals||!signals.length) return;
+  const s=signals[0];
+  const t=new Date().toUTCString().slice(17,25);
+  pxHist.push(s.price/100); fvHist.push(s.fair/100); lbHist.push(t);
+  if(pxHist.length>60){pxHist.shift();fvHist.shift();lbHist.shift();}
+  chart.data.labels=lbHist;
+  chart.data.datasets[0].data=pxHist;
+  chart.data.datasets[1].data=fvHist;
+  chart.update('none');
+  const px=pxHist[pxHist.length-1], prev=pxHist[pxHist.length-2]||px;
+  const chg=px-prev;
+  document.getElementById('chartPrice').textContent=px.toFixed(3);
+  const ce=document.getElementById('chartChg');
+  ce.textContent=(chg>=0?'+':'')+(chg*100).toFixed(2)+'%';
+  ce.style.color=chg>=0?'var(--green)':'var(--red)';
+}
+
+// Activity
+function act(text,type='b'){
+  const f=document.getElementById('actFeed');
+  const d=document.createElement('div');
+  d.className='act-item';
+  d.innerHTML=`<div class="act-dot ${type}"></div><div><div class="act-text">${text}</div><div class="act-time">${new Date().toUTCString().slice(17,25)}</div></div>`;
+  f.insertBefore(d,f.firstChild);
+  while(f.children.length>30)f.removeChild(f.lastChild);
+}
+
+// Signals
+function renderSignals(sigs){
+  const el=document.getElementById('sigList');
+  if(!sigs||!sigs.length){
+    el.innerHTML='<div style="padding:20px;text-align:center;color:var(--t2);font-family:var(--mono);font-size:10px">No signals this scan…</div>';
+    document.getElementById('sigBadge').textContent='0 active';
+    return;
+  }
+  document.getElementById('sigBadge').textContent=sigs.length+' active';
+  el.innerHTML=sigs.map((s,i)=>`
+    <div class="sig-row ${s.direction==='BUY'?'buy':'sell'} new" onclick="window._sig=${JSON.stringify(s).replace(/"/g,'&quot;')}">
+      <div class="mn" title="${s.question}">${s.question}</div>
+      <div class="${s.direction==='BUY'?'dir-b':'dir-s'}">${s.direction}</div>
+      <div style="font-family:var(--mono);font-size:9px;color:var(--t2)">${(s.price/100).toFixed(3)}<span style="color:var(--t3)">→</span>${(s.fair/100).toFixed(3)}</div>
+      <div style="color:var(--green);font-family:var(--mono);font-size:9px">${s.edge}%</div>
+      <div style="color:var(--t2);font-family:var(--mono);font-size:9px">${s.confidence}%</div>
+      <button class="trade-btn ${s.direction.toLowerCase()}" onclick="event.stopPropagation()">${s.direction}</button>
+    </div>`).join('');
+}
+
+// Trades
+function renderTrades(trades){
+  if(!trades||!trades.length){document.getElementById('tradeList').innerHTML='';return;}
+  document.getElementById('tradeBadge').textContent=trades.length+' today';
+  document.getElementById('tradeList').innerHTML=trades.map(t=>`
+    <div class="tr-row">
+      <div class="${t.direction==='BUY'?'tr-buy':'tr-sell'}">${t.direction}</div>
+      <div style="font-family:var(--mono);font-size:9px;color:var(--t2)">$${t.size}</div>
+      <div style="font-family:var(--mono);font-size:9px;color:var(--text)">${t.price}</div>
+      <div class="${t.pnl>=0?'pnl-pos':'pnl-neg'}" style="font-family:var(--mono);font-size:9px">${t.pnl>=0?'+':''}$${t.pnl}</div>
+      <div style="font-family:var(--mono);font-size:8px;color:var(--t2)">${t.time}</div>
+    </div>`).join('');
+}
+
+// Main fetch
+async function fetchState(){
+  try{
+    const r=await fetch(`${BOT_URL}/api/state`,{mode:'cors'});
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    state=await r.json();
+    if(!connected){
+      connected=true;
+      document.getElementById('connBadge').className='badge badge-live';
+      document.getElementById('connTxt').textContent='LIVE';
+      act('Connected to bot API','g');
+    }
+
+    // Mode badge
+    const mode=state.mode||'PAPER';
+    document.getElementById('modeBadge').textContent=(mode==='PAPER'?'⚠ ':'●')+mode;
+
+    // Halt banner
+    const hb=document.getElementById('haltBanner');
+    if(!state.running&&state.halt_reason){
+      hb.style.display='block';
+      hb.textContent='🚨 BOT HALTED — '+state.halt_reason;
+      document.getElementById('botStatus').textContent='HALTED';
+      document.getElementById('botStatus').className='pb pb-r';
+    } else {
+      hb.style.display='none';
+      document.getElementById('botStatus').textContent='RUNNING';
+      document.getElementById('botStatus').className='pb pb-g';
+    }
+
+    // Metrics
+    const bal=parseFloat(state.balance)||100;
+    document.getElementById('balance').textContent='$'+bal.toFixed(2);
+    const pnl=parseFloat(state.day_pnl)||0;
+    const pe=document.getElementById('dayPnl');
+    pe.textContent=(pnl>=0?'+':'')+' $'+Math.abs(pnl).toFixed(2);
+    pe.className='mv '+(pnl>=0?'mv-a':'mv-r');
+    document.getElementById('pnlSub').textContent=(state.trades_today||0)+' trades today';
+    const wr=parseFloat(state.win_rate)||0;
+    document.getElementById('winRate').textContent=state.trades_today>0?Math.round(wr*100)+'%':'—';
+    document.getElementById('winSub').textContent=state.trades_today>0?(state.trades_today+' trades'):'no trades yet';
+    document.getElementById('mktCount').textContent=state.markets_scanned||0;
+    document.getElementById('scanSub').textContent='Scan #'+(state.scan_count||0);
+    document.getElementById('chartVol').textContent='Last scan: '+(state.last_scan||'—');
+
+    // Risk bars
+    const lossPct=Math.min(Math.abs(pnl)/Math.max(bal,1)*100/(parseFloat(state.daily_loss_limit_pct)||5)*100,100);
+    document.getElementById('lossVal').textContent=(Math.abs(pnl)/Math.max(bal,1)*100).toFixed(1)+'%';
+    document.getElementById('lossBar').style.width=lossPct+'%';
+    document.getElementById('lossBar').className='rf '+(lossPct>70?'rf-r':lossPct>40?'rf-a':'rf-g');
+    const sigs=state.signals||[];
+    if(sigs.length>0){
+      const avgC=sigs.reduce((a,s)=>a+parseFloat(s.confidence),0)/sigs.length;
+      const avgE=sigs.reduce((a,s)=>a+parseFloat(s.edge),0)/sigs.length;
+      document.getElementById('confVal').textContent=avgC.toFixed(0)+'%';
+      document.getElementById('confBar').style.width=Math.min(avgC,100)+'%';
+      document.getElementById('edgeVal').textContent=avgE.toFixed(1)+'%';
+      document.getElementById('edgeBar').style.width=Math.min(avgE*8,100)+'%';
+    }
+
+    // New scan
+    if((state.scan_count||0)!==lastScan){
+      lastScan=state.scan_count||0;
+      act(`Scan #${lastScan} — <b>${sigs.length}</b> signal(s) from <b>${state.markets_scanned||0}</b> markets`,sigs.length>0?'g':'b');
+      pushChart(sigs);
+    }
+
+    renderSignals(sigs);
+    renderTrades(state.recent_trades||[]);
+
+  }catch(e){
+    if(connected){
+      connected=false;
+      document.getElementById('connBadge').className='badge badge-dead';
+      document.getElementById('connTxt').textContent='RECONNECTING';
+      act('Connection lost — retrying…','r');
+    }
+  }
+}
+
+initChart();
+fetchState();
+setInterval(fetchState,15000);
+</script>
+</body>
+</html>
